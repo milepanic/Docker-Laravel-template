@@ -1,0 +1,67 @@
+variables:
+    APP_IMAGE: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    APP_IMAGE_LATEST: ${CI_REGISTRY_IMAGE}:latest
+
+stages:
+    - prepare
+    - build
+    - test
+
+test_image:
+    stage: prepare
+    image:
+        name: docker/compose:1.21.2
+        entrypoint: ["/bin/sh", "-c"]
+    variables:
+        DOCKER_HOST: tcp://docker:2375
+    services:
+        - docker:dind
+    script:
+        - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+        - docker build . -t "${APP_IMAGE}" -t "${APP_IMAGE_LATEST}" -f .docker/php/dev.Dockerfile
+        - docker push ${APP_IMAGE}
+        - docker push ${APP_IMAGE_LATEST}
+    only:
+        - develop
+
+composer:
+    stage: build
+    image: ${APP_IMAGE_LATEST}
+    script:
+        - composer clear-cache
+        - composer install --prefer-dist --no-ansi --no-interaction --no-progress --no-scripts
+        - cp .env.example .env
+        - php artisan key:generate
+    artifacts:
+        expire_in: 1 month
+        paths:
+            - vendor/
+            - .env
+    only:
+        - develop
+
+npm:
+    stage: build
+    image: node:12 # Choose your node version from project
+    script:
+        - npm install
+        - npm run production
+    artifacts:
+        expire_in: 1 month
+        paths:
+            - node_modules/
+            - public/css/
+            - public/js/
+    only:
+        - develop
+
+phpunit:
+    stage: test
+    image: ${APP_IMAGE_LATEST}
+    dependencies:
+        - composer
+        - npm
+    script:
+        - ./vendor/bin/phpunit -c ./phpunit.xml --log-junit junit.xml --coverage-text
+    only:
+        - develop
