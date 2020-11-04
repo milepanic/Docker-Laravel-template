@@ -37,6 +37,12 @@ services:
         volumes:
             - mysqldata:/var/lib/mysql
 
+    testdb:
+        image: mysql:8
+        tmpfs: /var/lib/mysql
+        env_file:
+            - .env.testing
+
 volumes:
     mysqldata:
 
